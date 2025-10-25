@@ -278,9 +278,12 @@ class VideoProcessor(QObject):
                         time.sleep(0.01) # Wait for the segment to be configured
                         continue
                     if self.current_frame_number > self.current_segment_end_frame:
-                        # This segment is finished, wait for the stop signal (from stop_current_segment)
-                        time.sleep(0.01)
-                        continue
+                        # This segment is finished, the feeder's job is done.
+                        # We break the loop to allow the thread to terminate cleanly.
+                        # Previously, this was a time.sleep(0.01) loop, which
+                        # caused the thread to become an orphan.
+                        print(f"Feeder: Reached end of segment {self.current_segment_index + 1}. Stopping feed.")
+                        break 
                 else: # Standard mode
                     if self.current_frame_number > self.max_frame_number:
                         break  # End of video
@@ -1758,12 +1761,22 @@ class VideoProcessor(QObject):
         # 1. Stop timers
         self.gpu_memory_update_timer.stop()
 
-        # 2a. Wait for the feeder thread (ADDED)
+        # 2a. Wait for the feeder thread
         print(f"Waiting for feeder thread from segment {segment_num}...")
         if self.feeder_thread and self.feeder_thread.is_alive():
             self.feeder_thread.join(timeout=2.0)
+            
+            # Add a check to see if the join timed out
+            if self.feeder_thread.is_alive():
+                print(f"[WARN] Feeder thread from segment {segment_num} did not join gracefully.")
+            else:
+                print("Feeder thread joined.")
+            
+        else:
+            # This case is normal if the feeder finished its work very quickly
+            print("Feeder thread was already finished.")
+
         self.feeder_thread = None
-        print("Feeder thread joined.")
         
         # 2b. Wait for workers
         print(f"Waiting for workers from segment {segment_num}...")
