@@ -278,9 +278,12 @@ class VideoProcessor(QObject):
                         time.sleep(0.01) # Wait for the segment to be configured
                         continue
                     if self.current_frame_number > self.current_segment_end_frame:
-                        # This segment is finished, wait for the stop signal (from stop_current_segment)
-                        time.sleep(0.01)
-                        continue
+                        # This segment is finished, the feeder's job is done.
+                        # We break the loop to allow the thread to terminate cleanly.
+                        # Previously, this was a time.sleep(0.01) loop, which
+                        # caused the thread to become an orphan.
+                        print(f"Feeder: Reached end of segment {self.current_segment_index + 1}. Stopping feed.")
+                        break 
                 else: # Standard mode
                     if self.current_frame_number > self.max_frame_number:
                         break  # End of video
@@ -666,17 +669,22 @@ class VideoProcessor(QObject):
             print("Recording mode: Starting metronome immediately.")
             self._start_metronome(9999.0, is_first_start=True)
         else:
-            # Playback: start the preroll monitor
-            print(f"Playback mode: Waiting for preroll buffer (target: {self.preroll_target} frames)...")
-            
-            # Ensure the connection is clean (avoids multiple connections)
-            try:
-                self.preroll_timer.timeout.disconnect(self._check_preroll_and_start_playback)
-            except RuntimeError:
-                pass # Disconnection failed, which is normal the first time
-            
-            self.preroll_timer.timeout.connect(self._check_preroll_and_start_playback)
-            self.preroll_timer.start(100)
+            if self.main_window.control.get("VideoPlaybackBufferingToggle", False):
+                # Playback: start the preroll monitor
+                print(f"Playback mode: Waiting for preroll buffer (target: {self.preroll_target} frames)...")
+                
+                # Ensure the connection is clean (avoids multiple connections)
+                try:
+                    self.preroll_timer.timeout.disconnect(self._check_preroll_and_start_playback)
+                except RuntimeError:
+                    pass # Disconnection failed, which is normal the first time
+                
+                self.preroll_timer.timeout.connect(self._check_preroll_and_start_playback)
+                self.preroll_timer.start(100)
+            else:
+                # Recording: start the display metronome immediately
+                print("Playback mode.")
+                self._start_synchronized_playback()
 
     def start_frame_worker(self, frame_number, frame, is_single_frame=False):
         """Starts a FrameWorker to process the given frame."""
@@ -1339,9 +1347,13 @@ class VideoProcessor(QObject):
             )
 
             output_dir = os.path.dirname(final_file_path)
-            if not os.path.exists(output_dir):
+            
+            # Check if output_dir is not an empty string before creating it
+            # This prevents [WinError 3] if the path is just a filename.
+            if output_dir and not os.path.exists(output_dir):
                 try:
-                    os.makedirs(output_dir)
+                    # Added exist_ok=True for thread-safety
+                    os.makedirs(output_dir, exist_ok=True)
                     print(f"Created output directory: {output_dir}")
                 except OSError as e:
                     print(
@@ -1749,12 +1761,22 @@ class VideoProcessor(QObject):
         # 1. Stop timers
         self.gpu_memory_update_timer.stop()
 
-        # 2a. Wait for the feeder thread (ADDED)
+        # 2a. Wait for the feeder thread
         print(f"Waiting for feeder thread from segment {segment_num}...")
         if self.feeder_thread and self.feeder_thread.is_alive():
             self.feeder_thread.join(timeout=2.0)
+            
+            # Add a check to see if the join timed out
+            if self.feeder_thread.is_alive():
+                print(f"[WARN] Feeder thread from segment {segment_num} did not join gracefully.")
+            else:
+                print("Feeder thread joined.")
+            
+        else:
+            # This case is normal if the feeder finished its work very quickly
+            print("Feeder thread was already finished.")
+
         self.feeder_thread = None
-        print("Feeder thread joined.")
         
         # 2b. Wait for workers
         print(f"Waiting for workers from segment {segment_num}...")
@@ -1887,9 +1909,13 @@ class VideoProcessor(QObject):
         )
 
         output_dir = os.path.dirname(final_file_path)
-        if not os.path.exists(output_dir):
+
+        # Check if output_dir is not an empty string before creating it
+        # This prevents [WinError 3] if the path is just a filename.
+        if output_dir and not os.path.exists(output_dir):
             try:
-                os.makedirs(output_dir)
+                # Added exist_ok=True for thread-safety
+                os.makedirs(output_dir, exist_ok=True)
                 print(f"Created output directory: {output_dir}")
             except OSError as e:
                 print(f"[ERROR] Failed to create output directory {output_dir}: {e}")
