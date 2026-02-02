@@ -1,6 +1,6 @@
 {
   "title": "VisoMaster Experimental",
-  "description": "Powerful & Easy-to-Use Video Face Swapping and Editing Software",
+  "description": "Logiciel puissant et facile à utiliser pour l'échange et le montage vidéo de visages.",
   "icon": "icon.png",
   "run": [{
     "method": "shell.run",
