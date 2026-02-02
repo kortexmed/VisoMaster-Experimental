@@ -1,0 +1,37 @@
+{
+  "title": "VisoMaster Experimental",
+  "description": "Powerful & Easy-to-Use Video Face Swapping and Editing Software",
+  "icon": "icon.png",
+  "run": [{
+    "method": "shell.run",
+    "params": {
+      "message": "git clone https://github.com/kortexmed/VisoMaster-Experimental app"
+    }
+  }, {
+    "method": "shell.run",
+    "params": {
+      "venv": "env",
+      "path": "app",
+      "message": "pip install uv"
+    }
+  }, {
+    "method": "shell.run",
+    "params": {
+      "venv": "env",
+      "path": "app",
+      "message": "uv pip install -r requirements_cu129.txt"
+    }
+  }, {
+    "method": "shell.run",
+    "params": {
+      "venv": "env",
+      "path": "app",
+      "message": "python download_models.py"
+    }
+  }, {
+    "method": "notify",
+    "params": {
+      "html": "✅ Installation terminée ! Cliquez sur 'start' pour lancer VisoMaster."
+    }
+  }]
+}
